@@ -1,0 +1,28 @@
+# WheroAnotherMaintenance Configuration
+# ======================================
+
+# Whether maintenance mode is currently enabled
+# This is automatically managed but can be changed manually
+maintenance-enabled: true
+
+# Grace time in minutes before maintenance mode is enabled
+# after all trusted players (OPs and trusted list) disconnect
+grace-time-minutes: 15
+
+# List of trusted player UUIDs (managed via /wam add and /wam del commands)
+# These players can join during maintenance and will prevent/disable maintenance when online
+trusted-players: []
+
+# List of trusted player names (for display purposes, managed alongside UUIDs)
+trusted-player-names: []
+
+# Messages configuration
+messages:
+  # Prefix for plugin messages
+  prefix: "[WAM] "
+  
+  # Message shown to players kicked when maintenance mode is enabled
+  kick-message: "Server is now in maintenance mode. Please try again later."
+  
+  # Message shown to players trying to join during maintenance
+  maintenance-kick: "Server is currently under maintenance. Please try again later."

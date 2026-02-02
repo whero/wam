@@ -1,0 +1,25 @@
+name: WheroAnotherMaintenance
+version: ${version}
+main: net.whero.wam.WheroAnotherMaintenance
+api-version: '1.21'
+description: Automatic maintenance mode management based on trusted player presence
+authors:
+  - Whero
+website: https://github.com/whero/whero-another-maintenance
+
+commands:
+  wam:
+    description: WheroAnotherMaintenance command
+    usage: /<command> <add|del|list|gracetime|status|on|off|reload>
+    permission: wam.admin
+    aliases:
+      - maintenance
+      - maint
+
+permissions:
+  wam.admin:
+    description: Allows use of all WAM commands
+    default: op
+  wam.bypass:
+    description: Allows bypassing maintenance mode (in addition to OPs and trusted players)
+    default: false
