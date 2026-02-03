@@ -7,6 +7,7 @@
 A smart maintenance mode plugin for PaperMC that automatically manages server access based on trusted player presence. No more forgetting to turn maintenance on or off!
 
 ⚠️  This plugin is only created for my own use case and YMMV. Use at your own risk. ⚠️
+
 🪲 The code is created quickly using AI assistance, bugs do exist. Use at your own risk. 🪲
 
 ## How It Works
