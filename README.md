@@ -2,7 +2,7 @@
 
 [![PaperMC](https://img.shields.io/badge/PaperMC-1.21.1-blue)](https://papermc.io/)
 [![Java](https://img.shields.io/badge/Java-21-orange)](https://openjdk.org/)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL2-green)](LICENSE)
 
 A smart maintenance mode plugin for PaperMC that automatically manages server access based on trusted player presence. No more forgetting to turn maintenance on or off!
 
