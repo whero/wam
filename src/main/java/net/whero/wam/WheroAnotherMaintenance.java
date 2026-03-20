@@ -36,8 +36,18 @@ public class WheroAnotherMaintenance extends JavaPlugin {
         getCommand("wam").setTabCompleter(new WamTabCompleter(maintenanceManager));
         
         getLogger().info("WheroAnotherMaintenance has been enabled!");
-        getLogger().info("Maintenance mode is currently: " + 
+        getLogger().info("Maintenance mode is currently: " +
             (maintenanceManager.isMaintenanceEnabled() ? "ENABLED" : "DISABLED"));
+
+        // Check after 30 seconds if no trusted players are online; if so, enable maintenance.
+        // This handles the case where the server restarts while a trusted player was online
+        // (maintenance was disabled) but no trusted player reconnects after the restart.
+        getServer().getScheduler().runTaskLater(this, () -> {
+            if (!maintenanceManager.isMaintenanceEnabled() && !maintenanceManager.hasAnyTrustedPlayerOnline()) {
+                getLogger().info("No trusted players online after startup — enabling maintenance mode.");
+                maintenanceManager.enableMaintenance();
+            }
+        }, 30 * 20L); // 30 seconds in ticks
     }
 
     @Override
