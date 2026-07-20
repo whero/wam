@@ -14,10 +14,19 @@ import java.util.UUID;
  */
 public class MaintenanceManager {
 
+    /** Permission that allows joining during maintenance without being OP or trusted. */
+    public static final String BYPASS_PERMISSION = "wam.bypass";
+
+    /** Valid range for the grace time, enforced for both commands and hand-edited configs. */
+    public static final int MIN_GRACE_MINUTES = 1;
+    public static final int MAX_GRACE_MINUTES = 1440; // 24 hours
+    public static final int DEFAULT_GRACE_MINUTES = 15;
+
     private final WheroAnotherMaintenance plugin;
     private boolean maintenanceEnabled;
     private BukkitTask graceTimer;
     private long graceTimerEndTime; // When the grace timer will fire (for display purposes)
+    private boolean startupGraceActive = true; // Until the post-startup check runs
 
     public MaintenanceManager(WheroAnotherMaintenance plugin) {
         this.plugin = plugin;
@@ -41,8 +50,8 @@ public class MaintenanceManager {
             plugin.saveConfig();
             plugin.getLogger().info("Maintenance mode has been ENABLED");
             
-            // Kick all non-trusted, non-OP players
-            kickNonTrustedPlayers();
+            // Kick all players who may not bypass maintenance
+            kickNonBypassPlayers();
         }
     }
 
@@ -59,14 +68,14 @@ public class MaintenanceManager {
     }
 
     /**
-     * Kick all players who are not OPs or trusted.
+     * Kick all players who may not bypass maintenance mode.
      */
-    private void kickNonTrustedPlayers() {
+    private void kickNonBypassPlayers() {
         String kickMessage = plugin.getConfig().getString("messages.kick-message", 
             "Server is now in maintenance mode. Please try again later.");
         
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (!isPlayerTrusted(player)) {
+            if (!canBypassMaintenance(player)) {
                 player.kick(net.kyori.adventure.text.Component.text(kickMessage));
             }
         }
@@ -80,6 +89,17 @@ public class MaintenanceManager {
             return true;
         }
         return getTrustedPlayerUUIDs().contains(player.getUniqueId().toString());
+    }
+
+    /**
+     * Check if a player may bypass maintenance mode: OP, on the trusted list,
+     * or holding the {@link #BYPASS_PERMISSION} permission.
+     */
+    public boolean canBypassMaintenance(Player player) {
+        if (isPlayerTrusted(player)) {
+            return true;
+        }
+        return player.hasPermission(BYPASS_PERMISSION);
     }
 
     /**
@@ -97,7 +117,9 @@ public class MaintenanceManager {
     }
 
     /**
-     * Add a player to the trusted list.
+     * Add a player to the trusted list. Any stale entries for the same name
+     * (e.g. added under a different UUID) are replaced so names and UUIDs
+     * can never desync into duplicate trust entries.
      */
     public boolean addTrustedPlayer(String playerName, UUID playerUUID) {
         List<String> uuids = new ArrayList<>(getTrustedPlayerUUIDs());
@@ -107,6 +129,8 @@ public class MaintenanceManager {
         if (uuids.contains(uuidString)) {
             return false; // Already trusted
         }
+        
+        removeEntriesForName(uuids, names, playerName);
         
         uuids.add(uuidString);
         names.add(playerName);
@@ -119,28 +143,16 @@ public class MaintenanceManager {
     }
 
     /**
-     * Remove a player from the trusted list by name.
+     * Remove a player from the trusted list by name. All matching entries are
+     * removed so revocation is guaranteed even if the lists ever desynced.
      */
     public boolean removeTrustedPlayer(String playerName) {
         List<String> uuids = new ArrayList<>(getTrustedPlayerUUIDs());
         List<String> names = new ArrayList<>(getTrustedPlayerNames());
         
-        int index = -1;
-        for (int i = 0; i < names.size(); i++) {
-            if (names.get(i).equalsIgnoreCase(playerName)) {
-                index = i;
-                break;
-            }
-        }
-        
-        if (index == -1) {
+        if (!removeEntriesForName(uuids, names, playerName)) {
             return false; // Not found
         }
-        
-        if (index < uuids.size()) {
-            uuids.remove(index);
-        }
-        names.remove(index);
         
         plugin.getConfig().set("trusted-players", uuids);
         plugin.getConfig().set("trusted-player-names", names);
@@ -150,10 +162,35 @@ public class MaintenanceManager {
     }
 
     /**
-     * Get the grace time in minutes.
+     * Remove every entry matching the given name (case-insensitive) from both
+     * lists, keeping them index-aligned. Returns true if anything was removed.
+     */
+    private boolean removeEntriesForName(List<String> uuids, List<String> names, String playerName) {
+        boolean removed = false;
+        for (int i = names.size() - 1; i >= 0; i--) {
+            if (names.get(i).equalsIgnoreCase(playerName)) {
+                names.remove(i);
+                if (i < uuids.size()) {
+                    uuids.remove(i);
+                }
+                removed = true;
+            }
+        }
+        return removed;
+    }
+
+    /**
+     * Get the grace time in minutes. Values outside the valid range (e.g. from a
+     * hand-edited config) fall back to the default so the timer can never break.
      */
     public int getGraceTimeMinutes() {
-        return plugin.getConfig().getInt("grace-time-minutes", 15);
+        int minutes = plugin.getConfig().getInt("grace-time-minutes", DEFAULT_GRACE_MINUTES);
+        if (minutes < MIN_GRACE_MINUTES || minutes > MAX_GRACE_MINUTES) {
+            plugin.getLogger().warning("grace-time-minutes value " + minutes + " is out of range ("
+                + MIN_GRACE_MINUTES + "-" + MAX_GRACE_MINUTES + "), using " + DEFAULT_GRACE_MINUTES + " instead.");
+            return DEFAULT_GRACE_MINUTES;
+        }
+        return minutes;
     }
 
     /**
@@ -228,6 +265,30 @@ public class MaintenanceManager {
             }
         }
         return false;
+    }
+
+    /**
+     * Whether the post-startup grace window is still active. While it is active
+     * and no trusted player is online, non-trusted players are refused at login
+     * so a restart never opens the server to everyone.
+     */
+    public boolean isStartupGraceActive() {
+        return startupGraceActive;
+    }
+
+    /**
+     * End the startup grace window (called by the post-startup check).
+     */
+    public void clearStartupGrace() {
+        startupGraceActive = false;
+    }
+
+    /**
+     * Re-read persisted state after a config reload so runtime state stays in
+     * sync with the file.
+     */
+    public void reload() {
+        maintenanceEnabled = plugin.getConfig().getBoolean("maintenance-enabled", true);
     }
 
     /**

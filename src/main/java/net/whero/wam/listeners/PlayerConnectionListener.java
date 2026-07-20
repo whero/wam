@@ -25,25 +25,24 @@ public class PlayerConnectionListener implements Listener {
     }
 
     /**
-     * Handle player login - block non-trusted players during maintenance.
+     * Handle player login - block players who may not bypass maintenance.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerLogin(PlayerLoginEvent event) {
         Player player = event.getPlayer();
         
-        // If maintenance is enabled, check if player is allowed
-        if (maintenanceManager.isMaintenanceEnabled()) {
-            // OPs are always allowed
-            if (player.isOp()) {
-                return;
-            }
-            
-            // Check if player is in trusted list
-            if (maintenanceManager.getTrustedPlayerUUIDs().contains(player.getUniqueId().toString())) {
-                return;
-            }
-            
-            // Block the connection
+        // OPs, trusted players and players with the bypass permission are always allowed
+        if (maintenanceManager.canBypassMaintenance(player)) {
+            return;
+        }
+        
+        // During the post-startup grace window (maintenance persisted as disabled, but no
+        // trusted player has reconnected yet), refuse everyone else so a restart never
+        // opens the server to the public
+        boolean startupLock = maintenanceManager.isStartupGraceActive()
+            && !maintenanceManager.hasAnyTrustedPlayerOnline();
+        
+        if (maintenanceManager.isMaintenanceEnabled() || startupLock) {
             String kickMessage = plugin.getConfig().getString("messages.maintenance-kick", 
                 "Server is currently under maintenance. Please try again later.");
             event.disallow(PlayerLoginEvent.Result.KICK_OTHER, Component.text(kickMessage));
@@ -52,8 +51,9 @@ public class PlayerConnectionListener implements Listener {
 
     /**
      * Handle player join - disable maintenance when trusted player joins.
+     * Runs at HIGHEST since it mutates plugin state (MONITOR must be observe-only).
      */
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         
@@ -75,8 +75,9 @@ public class PlayerConnectionListener implements Listener {
 
     /**
      * Handle player quit - start grace timer if no trusted players remain.
+     * Runs at HIGHEST since it mutates plugin state (MONITOR must be observe-only).
      */
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         

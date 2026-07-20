@@ -38,14 +38,27 @@ public class WheroAnotherMaintenance extends JavaPlugin {
         getLogger().info("WheroAnotherMaintenance has been enabled!");
         getLogger().info("Maintenance mode is currently: " +
             (maintenanceManager.isMaintenanceEnabled() ? "ENABLED" : "DISABLED"));
+        
+        // In offline mode, UUIDs are derived from usernames and are not authenticated,
+        // so the trusted players list can be bypassed by name spoofing
+        if (!getServer().getOnlineMode()) {
+            getLogger().warning("Server is running in OFFLINE mode: player UUIDs are not authenticated.");
+            getLogger().warning("The trusted players list can be bypassed by name spoofing. Use online mode or an authentication plugin.");
+        }
 
         // Check after 30 seconds if no trusted players are online; if so, enable maintenance.
         // This handles the case where the server restarts while a trusted player was online
         // (maintenance was disabled) but no trusted player reconnects after the restart.
+        // While this window is open, the login listener refuses non-trusted players so the
+        // restart never opens the server to everyone.
         getServer().getScheduler().runTaskLater(this, () -> {
-            if (!maintenanceManager.isMaintenanceEnabled() && !maintenanceManager.hasAnyTrustedPlayerOnline()) {
-                getLogger().info("No trusted players online after startup — enabling maintenance mode.");
-                maintenanceManager.enableMaintenance();
+            try {
+                if (!maintenanceManager.isMaintenanceEnabled() && !maintenanceManager.hasAnyTrustedPlayerOnline()) {
+                    getLogger().info("No trusted players online after startup — enabling maintenance mode.");
+                    maintenanceManager.enableMaintenance();
+                }
+            } finally {
+                maintenanceManager.clearStartupGrace();
             }
         }, 30 * 20L); // 30 seconds in ticks
     }

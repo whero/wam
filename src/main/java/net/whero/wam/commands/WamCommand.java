@@ -88,31 +88,24 @@ public class WamCommand implements CommandExecutor {
             } else {
                 sender.sendMessage(Component.text(onlinePlayer.getName() + " is already in the trusted players list.", NamedTextColor.YELLOW));
             }
+            return;
+        }
+        
+        // Player is offline. Only trust the server's cached profile: never store
+        // name-derived "offline UUIDs", which never match real players on online-mode
+        // servers and are trivially spoofable on offline-mode servers.
+        // getOfflinePlayerIfCached is a non-blocking in-memory lookup, safe on the main thread.
+        var cachedPlayer = Bukkit.getOfflinePlayerIfCached(playerName);
+        if (cachedPlayer == null) {
+            sender.sendMessage(Component.text("Player " + playerName + " has never joined this server. They must join once before they can be trusted.", NamedTextColor.RED));
+            return;
+        }
+        
+        String resolvedName = cachedPlayer.getName() != null ? cachedPlayer.getName() : playerName;
+        if (maintenanceManager.addTrustedPlayer(resolvedName, cachedPlayer.getUniqueId())) {
+            sender.sendMessage(Component.text("Added " + resolvedName + " to trusted players list.", NamedTextColor.GREEN));
         } else {
-            // Player is offline, we need to fetch their UUID asynchronously
-            sender.sendMessage(Component.text("Looking up player " + playerName + "...", NamedTextColor.GRAY));
-            
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                // Use Bukkit's offline player lookup
-                @SuppressWarnings("deprecation")
-                var offlinePlayer = Bukkit.getOfflinePlayer(playerName);
-                
-                if (offlinePlayer.hasPlayedBefore() || offlinePlayer.isOnline()) {
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        if (maintenanceManager.addTrustedPlayer(offlinePlayer.getName() != null ? offlinePlayer.getName() : playerName, offlinePlayer.getUniqueId())) {
-                            sender.sendMessage(Component.text("Added " + playerName + " to trusted players list.", NamedTextColor.GREEN));
-                        } else {
-                            sender.sendMessage(Component.text(playerName + " is already in the trusted players list.", NamedTextColor.YELLOW));
-                        }
-                    });
-                } else {
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        sender.sendMessage(Component.text("Warning: Player " + playerName + " has never joined this server. Adding anyway with offline UUID.", NamedTextColor.YELLOW));
-                        maintenanceManager.addTrustedPlayer(playerName, offlinePlayer.getUniqueId());
-                        sender.sendMessage(Component.text("Added " + playerName + " to trusted players list.", NamedTextColor.GREEN));
-                    });
-                }
-            });
+            sender.sendMessage(Component.text(resolvedName + " is already in the trusted players list.", NamedTextColor.YELLOW));
         }
     }
 
@@ -156,12 +149,12 @@ public class WamCommand implements CommandExecutor {
 
         try {
             int minutes = Integer.parseInt(args[1]);
-            if (minutes < 1) {
-                sender.sendMessage(Component.text("Grace time must be at least 1 minute.", NamedTextColor.RED));
+            if (minutes < MaintenanceManager.MIN_GRACE_MINUTES) {
+                sender.sendMessage(Component.text("Grace time must be at least " + MaintenanceManager.MIN_GRACE_MINUTES + " minute.", NamedTextColor.RED));
                 return;
             }
-            if (minutes > 1440) { // 24 hours max
-                sender.sendMessage(Component.text("Grace time cannot exceed 1440 minutes (24 hours).", NamedTextColor.RED));
+            if (minutes > MaintenanceManager.MAX_GRACE_MINUTES) {
+                sender.sendMessage(Component.text("Grace time cannot exceed " + MaintenanceManager.MAX_GRACE_MINUTES + " minutes (24 hours).", NamedTextColor.RED));
                 return;
             }
             
@@ -223,6 +216,7 @@ public class WamCommand implements CommandExecutor {
 
     private void handleReload(CommandSender sender) {
         plugin.reloadConfig();
+        maintenanceManager.reload(); // Re-sync in-memory state with the file
         sender.sendMessage(Component.text("Configuration reloaded.", NamedTextColor.GREEN));
     }
 
