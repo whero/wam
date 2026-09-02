@@ -1,7 +1,7 @@
 # WheroAnotherMaintenance (WAM)
 
-[![PaperMC](https://img.shields.io/badge/PaperMC-1.21.1-blue)](https://papermc.io/)
-[![Java](https://img.shields.io/badge/Java-21-orange)](https://openjdk.org/)
+[![PaperMC](https://img.shields.io/badge/PaperMC-26.2-blue)](https://papermc.io/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.4-purple)](https://kotlinlang.org/)
 [![License](https://img.shields.io/badge/License-GPL2-green)](LICENSE)
 
 A smart maintenance mode plugin for PaperMC that automatically manages server access based on trusted player presence. No more forgetting to turn maintenance on or off!
@@ -40,8 +40,8 @@ Unlike traditional maintenance plugins where you manually toggle maintenance mod
 4. (Optional) Configure `plugins/WheroAnotherMaintenance/config.yml`
 
 **Requirements:**
-- PaperMC 1.21.1 or compatible fork
-- Java 21+
+- PaperMC 26.2 or compatible fork
+- Java 25+
 
 ## Commands
 

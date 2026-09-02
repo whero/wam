@@ -1,7 +1,7 @@
 name: WheroAnotherMaintenance
 version: ${version}
 main: net.whero.wam.WheroAnotherMaintenance
-api-version: '1.21'
+api-version: '26.2'
 description: Automatic maintenance mode management based on trusted player presence
 authors:
   - Whero
