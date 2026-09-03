@@ -11,6 +11,8 @@ import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
 
+import java.util.UUID
+
 /**
  * Command handler for /wam commands.
  */
@@ -54,6 +56,7 @@ class WamCommand(
         if (onlinePlayer != null) {
             // Player is online, use their UUID directly
             if (maintenanceManager.addTrustedPlayer(onlinePlayer.name, onlinePlayer.uniqueId)) {
+                plugin.logger.info("${sender.name} added ${onlinePlayer.name} (${onlinePlayer.uniqueId}) to the trusted players list")
                 sender.sendMessage(Component.text("Added ${onlinePlayer.name} to trusted players list.", NamedTextColor.GREEN))
             } else {
                 sender.sendMessage(Component.text("${onlinePlayer.name} is already in the trusted players list.", NamedTextColor.YELLOW))
@@ -73,6 +76,7 @@ class WamCommand(
 
         val resolvedName = cachedPlayer.name ?: playerName
         if (maintenanceManager.addTrustedPlayer(resolvedName, cachedPlayer.uniqueId)) {
+            plugin.logger.info("${sender.name} added $resolvedName (${cachedPlayer.uniqueId}) to the trusted players list")
             sender.sendMessage(Component.text("Added $resolvedName to trusted players list.", NamedTextColor.GREEN))
         } else {
             sender.sendMessage(Component.text("$resolvedName is already in the trusted players list.", NamedTextColor.YELLOW))
@@ -81,16 +85,31 @@ class WamCommand(
 
     private fun handleDel(sender: CommandSender, args: Array<String>) {
         if (args.size < 2) {
-            sender.sendMessage(Component.text("Usage: /wam del <username>", NamedTextColor.RED))
+            sender.sendMessage(Component.text("Usage: /wam del <username|uuid>", NamedTextColor.RED))
             return
         }
 
-        val playerName = args[1]
+        val target = args[1]
 
-        if (maintenanceManager.removeTrustedPlayer(playerName)) {
-            sender.sendMessage(Component.text("Removed $playerName from trusted players list.", NamedTextColor.GREEN))
+        // A UUID targets the trust entry directly — the only reliable way to
+        // revoke trust for a player who renamed (their old name no longer matches)
+        val uuid = runCatching { UUID.fromString(target) }.getOrNull()
+        if (uuid != null) {
+            val removedName = maintenanceManager.removeTrustedPlayerByUuid(uuid)
+            if (removedName != null) {
+                plugin.logger.info("${sender.name} removed $removedName ($uuid) from the trusted players list")
+                sender.sendMessage(Component.text("Removed $removedName from trusted players list.", NamedTextColor.GREEN))
+            } else {
+                sender.sendMessage(Component.text("$target is not in the trusted players list.", NamedTextColor.RED))
+            }
+            return
+        }
+
+        if (maintenanceManager.removeTrustedPlayer(target)) {
+            plugin.logger.info("${sender.name} removed $target from the trusted players list")
+            sender.sendMessage(Component.text("Removed $target from trusted players list.", NamedTextColor.GREEN))
         } else {
-            sender.sendMessage(Component.text("$playerName is not in the trusted players list.", NamedTextColor.RED))
+            sender.sendMessage(Component.text("$target is not in the trusted players list.", NamedTextColor.RED))
         }
     }
 
@@ -132,6 +151,7 @@ class WamCommand(
         }
 
         maintenanceManager.setGraceTimeMinutes(minutes)
+        plugin.logger.info("${sender.name} set grace time to $minutes minutes")
         sender.sendMessage(Component.text("Grace time set to $minutes minutes.", NamedTextColor.GREEN))
     }
 
@@ -174,6 +194,7 @@ class WamCommand(
 
         maintenanceManager.cancelGraceTimer() // Cancel any running timer
         maintenanceManager.enableMaintenance()
+        plugin.logger.info("${sender.name} manually enabled maintenance mode")
         sender.sendMessage(Component.text("Maintenance mode has been manually enabled.", NamedTextColor.GREEN))
     }
 
@@ -185,19 +206,21 @@ class WamCommand(
 
         maintenanceManager.cancelGraceTimer() // Cancel any running timer
         maintenanceManager.disableMaintenance()
+        plugin.logger.info("${sender.name} manually disabled maintenance mode")
         sender.sendMessage(Component.text("Maintenance mode has been manually disabled.", NamedTextColor.GREEN))
     }
 
     private fun handleReload(sender: CommandSender) {
         plugin.reloadConfig()
         maintenanceManager.reload() // Re-sync in-memory state with the file
+        plugin.logger.info("${sender.name} reloaded the configuration")
         sender.sendMessage(Component.text("Configuration reloaded.", NamedTextColor.GREEN))
     }
 
     private fun sendUsage(sender: CommandSender) {
         sender.sendMessage(Component.text("=== WheroAnotherMaintenance Commands ===", NamedTextColor.GOLD))
         sender.sendMessage(Component.text("/wam add <username>", NamedTextColor.WHITE).append(Component.text(" - Add a trusted player", NamedTextColor.GRAY)))
-        sender.sendMessage(Component.text("/wam del <username>", NamedTextColor.WHITE).append(Component.text(" - Remove a trusted player", NamedTextColor.GRAY)))
+        sender.sendMessage(Component.text("/wam del <username|uuid>", NamedTextColor.WHITE).append(Component.text(" - Remove a trusted player", NamedTextColor.GRAY)))
         sender.sendMessage(Component.text("/wam list", NamedTextColor.WHITE).append(Component.text(" - List trusted players", NamedTextColor.GRAY)))
         sender.sendMessage(Component.text("/wam gracetime [minutes]", NamedTextColor.WHITE).append(Component.text(" - View/set grace time", NamedTextColor.GRAY)))
         sender.sendMessage(Component.text("/wam status", NamedTextColor.WHITE).append(Component.text(" - Show current status", NamedTextColor.GRAY)))

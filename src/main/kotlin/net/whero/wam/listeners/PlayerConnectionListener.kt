@@ -32,17 +32,22 @@ class PlayerConnectionListener(
             return
         }
 
-        // During the post-startup grace window (maintenance persisted as disabled, but no
-        // trusted player has reconnected yet), refuse everyone else so a restart never
-        // opens the server to the public
-        val startupLock = maintenanceManager.isStartupGraceActive &&
-            !maintenanceManager.hasAnyTrustedPlayerOnline()
-
-        if (maintenanceManager.isMaintenanceEnabled || startupLock) {
+        if (shouldDenyAccess()) {
             val kickMessage = plugin.config.getString("messages.maintenance-kick")
                 ?: "Server is currently under maintenance. Please try again later."
             event.disallow(PlayerLoginEvent.Result.KICK_OTHER, Component.text(kickMessage))
         }
+    }
+
+    /**
+     * Whether players who may not bypass must be denied access right now:
+     * maintenance is on, or the post-startup grace window is still active
+     * with no trusted player online (a restart must never open the server
+     * to the public).
+     */
+    private fun shouldDenyAccess(): Boolean {
+        return maintenanceManager.isMaintenanceEnabled ||
+            (maintenanceManager.isStartupGraceActive && !maintenanceManager.hasAnyTrustedPlayerOnline())
     }
 
     /**
@@ -52,6 +57,20 @@ class PlayerConnectionListener(
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onPlayerJoin(event: PlayerJoinEvent) {
         val player = event.player
+
+        // Backstop: another plugin registered at the same priority could have
+        // overridden the login check with event.allow(). Re-validate here so a
+        // denied player never actually enters the world.
+        if (shouldDenyAccess() && !maintenanceManager.canBypassMaintenance(player)) {
+            plugin.logger.warning(
+                "Kicking ${player.name}: reached join while access is denied " +
+                    "(another plugin may have overridden the login check)."
+            )
+            val kickMessage = plugin.config.getString("messages.kick-message")
+                ?: "Server is now in maintenance mode. Please try again later."
+            player.kick(Component.text(kickMessage))
+            return
+        }
 
         // Check if this is a trusted player
         if (maintenanceManager.isPlayerTrusted(player)) {

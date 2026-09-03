@@ -51,7 +51,7 @@ All commands require the `wam.admin` permission (default: OP).
 |---------|-------------|
 | `/wam status` | Show current maintenance state and timer info |
 | `/wam add <player>` | Add a player to the trusted list |
-| `/wam del <player>` | Remove a player from the trusted list |
+| `/wam del <player|uuid>` | Remove a player from the trusted list (by UUID works even after renames) |
 | `/wam list` | Show all trusted players |
 | `/wam gracetime [minutes]` | View or set the grace period |
 | `/wam on` | Manually enable maintenance |

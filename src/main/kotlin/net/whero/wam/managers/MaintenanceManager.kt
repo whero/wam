@@ -29,6 +29,12 @@ class MaintenanceManager(private val plugin: WheroAnotherMaintenance) {
     var isMaintenanceEnabled = plugin.config.getBoolean("maintenance-enabled", true)
         private set
 
+    init {
+        // Fail closed if a hand-edited config desynced the two parallel lists:
+        // an orphan UUID would be a trust entry invisible to /wam list
+        reconcileTrustedLists()
+    }
+
     private var graceTimer: BukkitTask? = null
     private var graceTimerEndTime: Long = 0 // When the grace timer will fire (for display purposes)
 
@@ -156,6 +162,58 @@ class MaintenanceManager(private val plugin: WheroAnotherMaintenance) {
     }
 
     /**
+     * Remove a player from the trusted list by UUID. The index-aligned name
+     * entry is removed as well. Returns the removed name (or the UUID string
+     * if the name entry was missing), or null if the UUID was not trusted.
+     *
+     * This is the only reliable way to revoke trust for a player who renamed:
+     * their new name no longer matches the stored name entry.
+     */
+    fun removeTrustedPlayerByUuid(playerUUID: UUID): String? {
+        val uuids = trustedPlayerUUIDs.toMutableList()
+        val names = trustedPlayerNames.toMutableList()
+
+        val index = uuids.indexOf(playerUUID.toString())
+        if (index < 0) {
+            return null
+        }
+
+        uuids.removeAt(index)
+        val removedName = if (index < names.size) names.removeAt(index) else playerUUID.toString()
+
+        plugin.config.set("trusted-players", uuids)
+        plugin.config.set("trusted-player-names", names)
+        plugin.saveConfig()
+
+        return removedName
+    }
+
+    /**
+     * Keep the two parallel trusted-player lists index-aligned. If a hand-edited
+     * config made their lengths differ, both are truncated to the shorter length
+     * (fail closed: an orphan UUID would be a trust entry invisible to /wam list).
+     */
+    private fun reconcileTrustedLists() {
+        val uuids = trustedPlayerUUIDs.toMutableList()
+        val names = trustedPlayerNames.toMutableList()
+        if (uuids.size == names.size) {
+            return
+        }
+
+        val commonSize = minOf(uuids.size, names.size)
+        plugin.logger.warning(
+            "trusted-players (${uuids.size}) and trusted-player-names (${names.size}) are out of sync; " +
+                "keeping only the first $commonSize aligned entries. Check your config."
+        )
+        while (uuids.size > commonSize) uuids.removeAt(uuids.size - 1)
+        while (names.size > commonSize) names.removeAt(names.size - 1)
+
+        plugin.config.set("trusted-players", uuids)
+        plugin.config.set("trusted-player-names", names)
+        plugin.saveConfig()
+    }
+
+    /**
      * Remove every entry matching the given name (case-insensitive) from both
      * lists, keeping them index-aligned. Returns true if anything was removed.
      */
@@ -268,10 +326,23 @@ class MaintenanceManager(private val plugin: WheroAnotherMaintenance) {
 
     /**
      * Re-read persisted state after a config reload so runtime state stays in
-     * sync with the file.
+     * sync with the file. If maintenance was switched on by hand-editing the
+     * config, enforce it immediately (kick players who may not bypass).
      */
     fun reload() {
+        val wasEnabled = isMaintenanceEnabled
         isMaintenanceEnabled = plugin.config.getBoolean("maintenance-enabled", true)
+        reconcileTrustedLists()
+
+        if (isMaintenanceEnabled) {
+            // A running grace timer is meaningless while maintenance is on; cancel it
+            // so it cannot fire later with a misleading "automatically enabled" message
+            cancelGraceTimer()
+            if (!wasEnabled) {
+                plugin.logger.info("Config reload enabled maintenance mode — kicking non-bypass players.")
+                kickNonBypassPlayers()
+            }
+        }
     }
 
     /**
